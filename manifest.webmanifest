@@ -1,0 +1,9 @@
+{
+  "name": "PLT 紙樣排版工具",
+  "short_name": "PLT 紙樣工具",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f7fa",
+  "theme_color": "#0b3b62",
+  "lang": "zh-Hant"
+}
