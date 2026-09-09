@@ -74,9 +74,10 @@
         <p class="notice">輸入品牌名稱後開啟。每張列印紙會鋪上淡色斜線與品牌文字；紙樣線條和 100% 尺寸不受影響，也不會上傳名稱。</p>
         <div id="sheetList" class="sheet-list"><p class="notice">開啟 PLT 後會顯示可列印的圖紙。</p></div>
         <button id="layoutPreviewBtn" class="wide-btn">在畫面預覽 A4／A3 排版</button>
+        <button id="rotateSheetBtn" class="wide-btn" disabled="">先點選紙樣，再旋轉 90°</button>
         <button id="resetLayoutBtn" class="wide-btn">重設自動排版</button>
         <button id="layoutPrintBtn" class="wide-btn">將已勾選圖紙排入紙張並列印</button>
-        <p class="notice">在紙張預覽中，直接拖曳任一紙樣即可調整位置。紙樣會固定 100%，且不會被拖出可列印範圍。</p>
+        <p class="notice">在紙張預覽中點一下紙樣即可選取；按「旋轉 90°」後可把它轉向。直接拖曳紙樣到同頁空白處或另一張紙，即可減少紙張使用；紙樣全程固定 100%。</p>
       </section>
       <section class="card"><h2>操作</h2><p class="notice">滾輪縮放；一般模式下可拖曳平移。圖面會始終等比例顯示，不會被拉寬或壓扁。</p></section>
     </aside>
@@ -89,7 +90,7 @@
   const ctx = canvas.getContext('2d');
   const wrap = document.querySelector('#canvasWrap');
   const el = id => document.getElementById(id);
-  let drawing = null, sheets = [], layoutPreview = false, manualPlacements = new Map(), rulerPlacements = new Map(), rulerPlacementMode = false, watermarkEnabled = false, watermarkText = '蓬蓬貓手作', layoutHitMap = null, layoutDrag = null, rulerDrag = null, view = { scale: 1, x: 0, y: 0 }, drag = null;
+  let drawing = null, sheets = [], layoutPreview = false, manualPlacements = new Map(), rotatedSheets = new Set(), selectedSheetId = null, rulerPlacements = new Map(), rulerPlacementMode = false, watermarkEnabled = false, watermarkText = '蓬蓬貓手作', layoutHitMap = null, layoutDrag = null, rulerDrag = null, view = { scale: 1, x: 0, y: 0 }, drag = null;
 
   function parseNumberPairs(params) {
     const values = (params.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
@@ -183,13 +184,35 @@
   function selectedSheets() {
     return [...document.querySelectorAll('[data-sheet]:checked')].map(input => sheets.find(sheet => sheet.id === Number(input.dataset.sheet))).filter(Boolean);
   }
+  function setSelectedSheet(sheetId) {
+    selectedSheetId = sheetId;
+    const button = el('rotateSheetBtn');
+    button.disabled = !sheetId;
+    button.textContent = sheetId ? `旋轉圖紙 ${sheetId} 90°` : '先點選紙樣，再旋轉 90°';
+  }
+  function isRotated(sheetId) { return rotatedSheets.has(sheetId); }
+  function pointInPlacement(point, bounds, rotated) {
+    return rotated
+      ? [(point[1] - bounds.minY) / UNITS_PER_MM, (point[0] - bounds.minX) / UNITS_PER_MM]
+      : [(point[0] - bounds.minX) / UNITS_PER_MM, (bounds.maxY - point[1]) / UNITS_PER_MM];
+  }
+  function placementSvg(placement) {
+    const b = placement.sheet.bounds;
+    const transform = placement.rotated
+      ? `matrix(0 1 1 0 ${-b.minY} ${-b.minX})`
+      : `translate(${-b.minX} ${b.maxY}) scale(1 -1)`;
+    const viewW = placement.rotated ? b.height : b.width;
+    const viewH = placement.rotated ? b.width : b.height;
+    return `<svg aria-label="圖紙 ${placement.sheet.id}" style="width:${placement.drawW}mm;height:${placement.drawH}mm;left:${placement.left}mm;top:${placement.top}mm" viewBox="0 0 ${viewW} ${viewH}"><g transform="${transform}">${svgPaths(placement.sheet.segments)}</g></svg>`;
+  }
   function buildLayoutPages() {
     const paper = paperSettings(), margin = Number(el('pageMargin').value), calibrationSpace = 0, gutter = 3;
     if (!Number.isFinite(margin) || margin < 0) return { pages: [], error: '請輸入有效的紙邊留白。' };
     const usableW = paper.width - margin * 2, usableH = paper.height - margin * 2 - calibrationSpace;
     const items = selectedSheets().map(sheet => {
       const b = sheet.bounds, naturalW = b.width / UNITS_PER_MM, naturalH = b.height / UNITS_PER_MM;
-      return { sheet, scale: 1, drawW: naturalW, drawH: naturalH };
+      const rotated = isRotated(sheet.id);
+      return { sheet, scale: 1, rotated, drawW: rotated ? naturalH : naturalW, drawH: rotated ? naturalW : naturalH };
     });
     const oversized = items.find(item => item.drawW > usableW || item.drawH > usableH);
     if (oversized) return { pages: [], error: `圖紙 ${oversized.sheet.id} 為 ${oversized.drawW.toFixed(1)} × ${oversized.drawH.toFixed(1)} mm，無法在 ${el('paperSize').value} 的可用範圍內以 100% 列印。請改用較大紙張或專用長紙印表機。` };
@@ -203,11 +226,15 @@
       page.cursorX += item.drawW + gutter; page.rowHeight = Math.max(page.rowHeight, item.drawH);
     }
     const key = layoutKey();
-    pages.forEach((page, pageIndex) => page.placements.forEach(placement => {
+    const allPlacements = pages.flatMap((page, pageIndex) => page.placements.map(placement => ({ ...placement, pageIndex })));
+    for (const placement of allPlacements) {
       const saved = manualPlacements.get(placement.sheet.id);
-      if (saved && saved.key === key && saved.pageIndex === pageIndex) { placement.left = saved.left; placement.top = saved.top; }
-    }));
-    return { pages, margin, calibrationSpace };
+      if (saved && saved.key === key) { placement.pageIndex = saved.pageIndex; placement.left = saved.left; placement.top = saved.top; }
+    }
+    const pageCount = Math.max(1, ...allPlacements.map(placement => placement.pageIndex + 1));
+    const arrangedPages = Array.from({ length: pageCount }, () => ({ paper, placements: [] }));
+    allPlacements.forEach(placement => arrangedPages[placement.pageIndex].placements.push(placement));
+    return { pages: arrangedPages.filter(page => page.placements.length), margin, calibrationSpace };
   }
   const RULER_WIDTH = 50, RULER_HEIGHT = 13;
   function rulerForPage(pageIndex, paper, margin) {
@@ -265,7 +292,8 @@
       ctx.strokeStyle = '#102b43'; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
       for (const placement of page.placements) {
         const b = placement.sheet.bounds, drawX = x + placement.left * pxPerMm, drawY = y + placement.top * pxPerMm;
-        for (const s of placement.sheet.segments) { ctx.setLineDash(s.lineType === 2 ? [5, 4] : []); ctx.beginPath(); ctx.moveTo(drawX + (s.a[0] - b.minX) / UNITS_PER_MM * placement.scale * pxPerMm, drawY + (b.maxY - s.a[1]) / UNITS_PER_MM * placement.scale * pxPerMm); ctx.lineTo(drawX + (s.b[0] - b.minX) / UNITS_PER_MM * placement.scale * pxPerMm, drawY + (b.maxY - s.b[1]) / UNITS_PER_MM * placement.scale * pxPerMm); ctx.stroke(); }
+        if (placement.sheet.id === selectedSheetId) { ctx.save(); ctx.strokeStyle = '#b96143'; ctx.lineWidth = 2; ctx.setLineDash([5, 3]); ctx.strokeRect(drawX - 2, drawY - 2, placement.drawW * pxPerMm + 4, placement.drawH * pxPerMm + 4); ctx.restore(); }
+        for (const s of placement.sheet.segments) { const a = pointInPlacement(s.a, b, placement.rotated), b2 = pointInPlacement(s.b, b, placement.rotated); ctx.setLineDash(s.lineType === 2 ? [5, 4] : []); ctx.beginPath(); ctx.moveTo(drawX + a[0] * placement.scale * pxPerMm, drawY + a[1] * placement.scale * pxPerMm); ctx.lineTo(drawX + b2[0] * placement.scale * pxPerMm, drawY + b2[1] * placement.scale * pxPerMm); ctx.stroke(); }
       }
       ctx.restore(); ctx.setLineDash([]); const ruler = rulerForPage(index, paper, layout.margin); if (ruler) drawScaleRuler(x + ruler.left * pxPerMm, y + ruler.top * pxPerMm, pxPerMm);
     });
@@ -330,12 +358,23 @@
   function beginLayoutDrag(x, y) {
     const hit = findLayoutPlacement(x, y); if (!hit) return false;
     const map = layoutHitMap;
+    setSelectedSheet(hit.placement.sheet.id);
     layoutDrag = { ...hit, offsetX: (x - hit.pageX) / map.pxPerMm - hit.placement.left, offsetY: (y - hit.pageY) / map.pxPerMm - hit.placement.top };
     return true;
   }
+  function pageAtPoint(x, y) {
+    const map = layoutHitMap; if (!map) return null;
+    for (let pageIndex = 0; pageIndex < map.pages.length; pageIndex++) {
+      const col = pageIndex % map.columns, row = Math.floor(pageIndex / map.columns);
+      const pageX = map.startX + col * (map.paper.width + map.gap) * map.pxPerMm, pageY = map.startY + row * (map.paper.height + map.gap) * map.pxPerMm;
+      if (x >= pageX && x <= pageX + map.paper.width * map.pxPerMm && y >= pageY && y <= pageY + map.paper.height * map.pxPerMm) return { pageIndex, pageX, pageY };
+    }
+    return null;
+  }
   function updateLayoutDrag(x, y) {
     if (!layoutDrag || !layoutHitMap) return;
-    const map = layoutHitMap, margin = map.margin, calibrationSpace = map.calibrationSpace, placement = layoutDrag.placement;
+    const map = layoutHitMap, margin = map.margin, calibrationSpace = map.calibrationSpace, placement = layoutDrag.placement, target = pageAtPoint(x, y) || layoutDrag;
+    layoutDrag.pageIndex = target.pageIndex; layoutDrag.pageX = target.pageX; layoutDrag.pageY = target.pageY;
     const maxX = map.paper.width - margin - placement.drawW, maxY = map.paper.height - margin - calibrationSpace - placement.drawH;
     const left = Math.max(margin, Math.min(maxX, (x - layoutDrag.pageX) / map.pxPerMm - layoutDrag.offsetX));
     const top = Math.max(margin, Math.min(maxY, (y - layoutDrag.pageY) / map.pxPerMm - layoutDrag.offsetY));
@@ -359,7 +398,7 @@
     if (!printPages.length) return alert('請先勾選至少一張圖紙。');
     const paper = printPages[0].paper;
     const pages = printPages.map((page, index) => {
-      const drawings = page.placements.map(placement => { const { sheet, drawW, drawH, left, top } = placement, b = sheet.bounds; return `<svg aria-label="圖紙 ${sheet.id}" style="width:${drawW}mm;height:${drawH}mm;left:${left}mm;top:${top}mm" viewBox="${b.minX} ${b.minY} ${b.width} ${b.height}"><g transform="translate(0 ${b.minY + b.maxY}) scale(1 -1)">${svgPaths(sheet.segments)}</g></svg>`; }).join('');
+      const drawings = page.placements.map(placementSvg).join('');
       const ruler = rulerForPage(index, paper, layout.margin);
       return `<section class="page">${watermarkEnabled ? watermarkSvg(paper) : ''}${drawings}${ruler ? scaleRulerSvg(ruler) : ''}</section>`;
     }).join('');
@@ -370,13 +409,13 @@
   el('fileInput').addEventListener('change', async event => {
     const file = event.target.files[0]; if (!file) return;
     try {
-      drawing = parseHPGL(await file.text()); sheets = splitIntoSheets(drawing.segments); manualPlacements.clear(); rulerPlacements.clear(); rulerPlacementMode = false; renderSheetList(); setLayoutPreview(false); el('fileName').textContent = file.name; el('empty').style.display = 'none';
+      drawing = parseHPGL(await file.text()); sheets = splitIntoSheets(drawing.segments); manualPlacements.clear(); rotatedSheets.clear(); setSelectedSheet(null); rulerPlacements.clear(); rulerPlacementMode = false; renderSheetList(); setLayoutPreview(false); el('fileName').textContent = file.name; el('empty').style.display = 'none';
       const b = drawing.bounds; el('width').textContent = `${(b.width / UNITS_PER_MM).toFixed(2)} mm`; el('height').textContent = `${(b.height / UNITS_PER_MM).toFixed(2)} mm`; el('segments').textContent = drawing.segments.length.toLocaleString();
       fit();
     } catch (error) { drawing = null; alert(`無法讀取這個檔案：${error.message}`); }
     event.target.value = '';
   });
-  el('fitBtn').addEventListener('click', () => { setLayoutPreview(false); fit(); }); el('printBtn').addEventListener('click', printDrawing); el('layoutPreviewBtn').addEventListener('click', () => setLayoutPreview(!layoutPreview)); el('resetLayoutBtn').addEventListener('click', () => { manualPlacements.clear(); rulerPlacements.clear(); setRulerPlacementMode(false); if (layoutPreview) render(); }); el('layoutPrintBtn').addEventListener('click', printLayout);
+  el('fitBtn').addEventListener('click', () => { setLayoutPreview(false); fit(); }); el('printBtn').addEventListener('click', printDrawing); el('layoutPreviewBtn').addEventListener('click', () => setLayoutPreview(!layoutPreview)); el('rotateSheetBtn').addEventListener('click', () => { if (!selectedSheetId) return; rotatedSheets.has(selectedSheetId) ? rotatedSheets.delete(selectedSheetId) : rotatedSheets.add(selectedSheetId); manualPlacements.delete(selectedSheetId); if (layoutPreview) render(); }); el('resetLayoutBtn').addEventListener('click', () => { manualPlacements.clear(); rotatedSheets.clear(); setSelectedSheet(null); rulerPlacements.clear(); setRulerPlacementMode(false); if (layoutPreview) render(); }); el('layoutPrintBtn').addEventListener('click', printLayout);
   ['paperSize', 'orientation', 'pageMargin'].forEach(id => el(id).addEventListener(id === 'pageMargin' ? 'input' : 'change', () => { if (layoutPreview) render(); }));
   el('sheetList').addEventListener('change', () => { if (layoutPreview) render(); });
   el('addRulerBtn').addEventListener('click', () => { if (!layoutPreview) setLayoutPreview(true); setRulerPlacementMode(!rulerPlacementMode); });
