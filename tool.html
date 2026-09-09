@@ -1,3 +1,4 @@
+<!doctype html>
 <html lang="zh-Hant"><head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -50,17 +51,10 @@
   </header>
   <main>
     <section id="canvasWrap">
-      <canvas id="canvas" width="1213" height="828" style="width: 970px; height: 662px;"></canvas>
+      <canvas id="canvas" width="671" height="800" style="width: 536.4px; height: 639.6px;"></canvas>
       <div id="empty"><div>選擇一個 PLT 檔案開始<br><small>支援 HPGL／HPGL/2 的 PU、PD 繪圖座標</small></div></div>
     </section>
     <aside>
-      <section class="card"><h2>圖面尺寸（原始比例）</h2><dl>
-        <dt>寬度</dt><dd id="width">—</dd><dt>高度</dt><dd id="height">—</dd><dt>繪圖線段</dt><dd id="segments">—</dd><dt>座標單位</dt><dd>40 單位 / mm</dd>
-      </dl></section>
-      <section class="card"><h2>整張長圖列印</h2>
-        <p class="notice">此功能用於整張 PLT 長圖。做包包紙樣請使用下方的「拆圖後排版列印」，它才會保留每個獨立紙樣、紙張框與校正尺。</p>
-        <div class="print-row"><strong>固定 100%（1:1）</strong><button id="printBtn">列印長圖</button></div>
-      </section>
       <section class="card"><h2>拆圖後排版列印</h2>
         <p class="notice">依上下空白自動分出獨立圖紙；每張圖紙各放進一個紙張框中，維持等比例。</p>
         <div class="print-row"><select id="paperSize" aria-label="紙張大小"><option value="A4">A4（210 × 297 mm）</option><option value="A3">A3（297 × 420 mm）</option></select></div>
@@ -381,16 +375,6 @@
     manualPlacements.set(placement.sheet.id, { key: layoutKey(), pageIndex: layoutDrag.pageIndex, left, top });
     render();
   }
-  function printDrawing() {
-    if (!drawing) return alert('請先開啟 PLT 檔案。');
-    const percent = 100;
-    const b = drawing.bounds, factor = percent / 100, widthMm = (b.width / UNITS_PER_MM * factor).toFixed(3), heightMm = (b.height / UNITS_PER_MM * factor).toFixed(3);
-    const paths = svgPaths(drawing.segments);
-    const title = esc(el('fileName').textContent);
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>@page{margin:0}html,body{margin:0;padding:0}svg{display:block;width:${widthMm}mm;height:${heightMm}mm;overflow:visible}path{fill:none;stroke:#000;stroke-width:1.2;stroke-linecap:round;vector-effect:non-scaling-stroke}</style></head><body><svg xmlns="http://www.w3.org/2000/svg" viewBox="${b.minX} ${b.minY} ${b.width} ${b.height}"><g transform="translate(0 ${b.minY + b.maxY}) scale(1 -1)">${paths}</g></svg><script>window.onload=()=>window.print();<\/script></body></html>`;
-    const win = window.open('', '_blank'); if (!win) return alert('瀏覽器封鎖了列印視窗，請允許彈出式視窗後再試一次。');
-    win.document.write(html); win.document.close();
-  }
   function printLayout() {
     if (!sheets.length) return alert('請先開啟 PLT 檔案。');
     const layout = buildLayoutPages(), printPages = layout.pages;
@@ -410,12 +394,11 @@
     const file = event.target.files[0]; if (!file) return;
     try {
       drawing = parseHPGL(await file.text()); sheets = splitIntoSheets(drawing.segments); manualPlacements.clear(); rotatedSheets.clear(); setSelectedSheet(null); rulerPlacements.clear(); rulerPlacementMode = false; renderSheetList(); setLayoutPreview(false); el('fileName').textContent = file.name; el('empty').style.display = 'none';
-      const b = drawing.bounds; el('width').textContent = `${(b.width / UNITS_PER_MM).toFixed(2)} mm`; el('height').textContent = `${(b.height / UNITS_PER_MM).toFixed(2)} mm`; el('segments').textContent = drawing.segments.length.toLocaleString();
       fit();
     } catch (error) { drawing = null; alert(`無法讀取這個檔案：${error.message}`); }
     event.target.value = '';
   });
-  el('fitBtn').addEventListener('click', () => { setLayoutPreview(false); fit(); }); el('printBtn').addEventListener('click', printDrawing); el('layoutPreviewBtn').addEventListener('click', () => setLayoutPreview(!layoutPreview)); el('rotateSheetBtn').addEventListener('click', () => { if (!selectedSheetId) return; rotatedSheets.has(selectedSheetId) ? rotatedSheets.delete(selectedSheetId) : rotatedSheets.add(selectedSheetId); manualPlacements.delete(selectedSheetId); if (layoutPreview) render(); }); el('resetLayoutBtn').addEventListener('click', () => { manualPlacements.clear(); rotatedSheets.clear(); setSelectedSheet(null); rulerPlacements.clear(); setRulerPlacementMode(false); if (layoutPreview) render(); }); el('layoutPrintBtn').addEventListener('click', printLayout);
+  el('fitBtn').addEventListener('click', () => { setLayoutPreview(false); fit(); }); el('layoutPreviewBtn').addEventListener('click', () => setLayoutPreview(!layoutPreview)); el('rotateSheetBtn').addEventListener('click', () => { if (!selectedSheetId) return; rotatedSheets.has(selectedSheetId) ? rotatedSheets.delete(selectedSheetId) : rotatedSheets.add(selectedSheetId); manualPlacements.delete(selectedSheetId); if (layoutPreview) render(); }); el('resetLayoutBtn').addEventListener('click', () => { manualPlacements.clear(); rotatedSheets.clear(); setSelectedSheet(null); rulerPlacements.clear(); setRulerPlacementMode(false); if (layoutPreview) render(); }); el('layoutPrintBtn').addEventListener('click', printLayout);
   ['paperSize', 'orientation', 'pageMargin'].forEach(id => el(id).addEventListener(id === 'pageMargin' ? 'input' : 'change', () => { if (layoutPreview) render(); }));
   el('sheetList').addEventListener('change', () => { if (layoutPreview) render(); });
   el('addRulerBtn').addEventListener('click', () => { if (!layoutPreview) setLayoutPreview(true); setRulerPlacementMode(!rulerPlacementMode); });
@@ -432,4 +415,4 @@
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js');</script>
 
 
-</body><div id="codex-browser-sidebar-comments-root" style="position: fixed; inset: 0px; pointer-events: none; z-index: 2147483647;"></div></html>
+</body></html>
