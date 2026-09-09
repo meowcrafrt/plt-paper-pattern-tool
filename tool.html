@@ -1,6 +1,4 @@
-<!doctype html>
-<html lang="zh-Hant">
-<head>
+<html lang="zh-Hant"><head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1769aa">
@@ -22,7 +20,6 @@
     main { height: calc(100vh - 58px); display: grid; grid-template-columns: 1fr 310px; }
     #canvasWrap { position: relative; overflow: hidden; background-color: #dfe6ec; background-image: linear-gradient(#cfd8e1 1px, transparent 1px), linear-gradient(90deg, #cfd8e1 1px, transparent 1px); background-size: 20px 20px; }
     canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
-    canvas.measure { cursor: crosshair; }
     aside { background: #fff; border-left: 1px solid #dce3ea; padding: 18px; overflow-y: auto; }
     .card { border: 1px solid #dce3ea; border-radius: 9px; padding: 13px; margin-bottom: 14px; }
     h2 { margin: 0 0 10px; font-size: 14px; }
@@ -36,6 +33,9 @@
     .sheet-item { display: flex; gap: 7px; align-items: center; padding: 7px 1px; border-bottom: 1px solid #e5eaf0; font-size: 13px; }
     .sheet-item span { color: #667482; margin-left: auto; white-space: nowrap; }
     .wide-btn { width: 100%; margin-top: 10px; }
+    .toggle-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 14px; cursor: pointer; }
+    .toggle-row input { width: 16px; height: 16px; accent-color: #1769aa; }
+    .print-row .brand-input { width: 100%; }
     #empty { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; color: #556575; }
     #empty div { background: rgba(255,255,255,.82); border: 1px dashed #9aaab9; border-radius: 12px; padding: 24px 30px; text-align: center; line-height: 1.7; }
     @media (max-width: 760px) { main { grid-template-columns: 1fr; } aside { display: none; } #fileName { display: none; } header { gap: 6px; padding: 8px; } h1 { display: none; } }
@@ -46,22 +46,17 @@
     <h1>PLT 原比例檢視與量測</h1>
     <label class="file-label">開啟 PLT<input id="fileInput" type="file" accept=".plt,.hpgl,.hgl,text/plain"></label>
     <button id="fitBtn" title="將圖面縮放至可視範圍">符合視窗</button>
-    <button id="measureBtn" title="點選圖上兩點量測距離">量測兩點</button>
-    <button id="clearMeasureBtn">清除量測</button>
     <span class="spacer"></span><span id="fileName">尚未載入檔案</span>
   </header>
   <main>
     <section id="canvasWrap">
-      <canvas id="canvas"></canvas>
+      <canvas id="canvas" width="1213" height="828" style="width: 970px; height: 662px;"></canvas>
       <div id="empty"><div>選擇一個 PLT 檔案開始<br><small>支援 HPGL／HPGL/2 的 PU、PD 繪圖座標</small></div></div>
     </section>
     <aside>
       <section class="card"><h2>圖面尺寸（原始比例）</h2><dl>
         <dt>寬度</dt><dd id="width">—</dd><dt>高度</dt><dd id="height">—</dd><dt>繪圖線段</dt><dd id="segments">—</dd><dt>座標單位</dt><dd>40 單位 / mm</dd>
       </dl></section>
-      <section class="card"><h2>量測結果</h2><dl>
-        <dt>距離</dt><dd id="distance">選取兩點</dd><dt>目前位置</dt><dd id="cursor">—</dd>
-      </dl><p class="notice" style="margin-top:10px">啟用「量測兩點」後，依序點圖面上的兩個位置。再按一次可重新量測。</p></section>
       <section class="card"><h2>整張長圖列印</h2>
         <p class="notice">此功能用於整張 PLT 長圖。做包包紙樣請使用下方的「拆圖後排版列印」，它才會保留每個獨立紙樣、紙張框與校正尺。</p>
         <div class="print-row"><strong>固定 100%（1:1）</strong><button id="printBtn">列印長圖</button></div>
@@ -71,7 +66,12 @@
         <div class="print-row"><select id="paperSize" aria-label="紙張大小"><option value="A4">A4（210 × 297 mm）</option><option value="A3">A3（297 × 420 mm）</option></select></div>
         <div class="print-row"><select id="orientation" aria-label="紙張方向"><option value="portrait">直式</option><option value="landscape">橫式</option></select><strong>固定 100%（1:1）</strong></div>
         <div class="print-row"><span>紙邊留白</span><input id="pageMargin" type="number" value="3" min="0" max="20" step="1" aria-label="紙邊留白"><span>mm</span></div>
-        <p class="notice">不會縮小或放大紙樣。預設只留 3 mm 邊界，讓紙樣盡量使用 A4/A3。若印表機無法印到邊緣，請調大留白。每一頁皆會印出「100 mm 校正尺」。</p>
+        <button id="addRulerBtn" class="wide-btn">放置 5 cm 比例尺</button>
+        <button id="removeRulerBtn" class="wide-btn">移除全部比例尺</button>
+        <p class="notice">按「放置 5 cm 比例尺」後，可依序在每張紙點一下放置。每張 A4／A3 都能各有一把尺；再按一次按鈕即可結束放置模式。插入後可再直接拖曳比例尺。</p>
+        <div class="print-row"><input id="watermarkText" class="brand-input" type="text" value="蓬蓬貓手作" maxlength="24" aria-label="浮水印品牌名稱" placeholder="輸入你的品牌名稱"></div>
+        <label class="toggle-row"><input id="watermarkEnabled" type="checkbox">啟用滿版品牌浮水印</label>
+        <p class="notice">輸入品牌名稱後開啟。每張列印紙會鋪上淡色斜線與品牌文字；紙樣線條和 100% 尺寸不受影響，也不會上傳名稱。</p>
         <div id="sheetList" class="sheet-list"><p class="notice">開啟 PLT 後會顯示可列印的圖紙。</p></div>
         <button id="layoutPreviewBtn" class="wide-btn">在畫面預覽 A4／A3 排版</button>
         <button id="resetLayoutBtn" class="wide-btn">重設自動排版</button>
@@ -89,7 +89,7 @@
   const ctx = canvas.getContext('2d');
   const wrap = document.querySelector('#canvasWrap');
   const el = id => document.getElementById(id);
-  let drawing = null, sheets = [], layoutPreview = false, manualPlacements = new Map(), layoutHitMap = null, layoutDrag = null, view = { scale: 1, x: 0, y: 0 }, measuring = false, measurePoints = [], drag = null;
+  let drawing = null, sheets = [], layoutPreview = false, manualPlacements = new Map(), rulerPlacements = new Map(), rulerPlacementMode = false, watermarkEnabled = false, watermarkText = '蓬蓬貓手作', layoutHitMap = null, layoutDrag = null, rulerDrag = null, view = { scale: 1, x: 0, y: 0 }, drag = null;
 
   function parseNumberPairs(params) {
     const values = (params.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
@@ -171,22 +171,7 @@
       ctx.setLineDash(s.lineType === 2 ? [5, 4] : []);
       const a = toScreen(s.a), b = toScreen(s.b); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
     }
-    ctx.setLineDash([]);
-    if (measurePoints.length) {
-      const [a, b] = measurePoints, sa = toScreen(a); ctx.strokeStyle = '#e05800'; ctx.fillStyle = '#e05800'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(sa[0], sa[1], 4, 0, Math.PI * 2); ctx.fill();
-      if (b) { const sb = toScreen(b); ctx.beginPath(); ctx.moveTo(sa[0], sa[1]); ctx.lineTo(sb[0], sb[1]); ctx.stroke(); ctx.beginPath(); ctx.arc(sb[0], sb[1], 4, 0, Math.PI * 2); ctx.fill(); }
-    }
-    ctx.restore();
-  }
-  function showMeasurement() {
-    const out = el('distance');
-    if (measurePoints.length < 2) { out.textContent = measurePoints.length ? '請選第二點' : '選取兩點'; return; }
-    const [a, b] = measurePoints, mm = Math.hypot(a[0] - b[0], a[1] - b[1]) / UNITS_PER_MM;
-    out.textContent = `${mm.toFixed(2)} mm`;
-  }
-  function setMeasure(on) {
-    measuring = on; measurePoints = []; el('measureBtn').classList.toggle('active', on); el('measureBtn').textContent = on ? '量測中…' : '量測兩點'; canvas.classList.toggle('measure', on); showMeasurement(); render();
+    ctx.setLineDash([]); ctx.restore();
   }
   function esc(value) { return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c])); }
   function svgPaths(segments) { return segments.map(s => `<path d="M ${s.a[0]} ${s.a[1]} L ${s.b[0]} ${s.b[1]}" ${s.lineType === 2 ? 'stroke-dasharray="18 14"' : ''}/>`).join(''); }
@@ -199,7 +184,7 @@
     return [...document.querySelectorAll('[data-sheet]:checked')].map(input => sheets.find(sheet => sheet.id === Number(input.dataset.sheet))).filter(Boolean);
   }
   function buildLayoutPages() {
-    const paper = paperSettings(), margin = Number(el('pageMargin').value), calibrationSpace = 18, gutter = 3;
+    const paper = paperSettings(), margin = Number(el('pageMargin').value), calibrationSpace = 0, gutter = 3;
     if (!Number.isFinite(margin) || margin < 0) return { pages: [], error: '請輸入有效的紙邊留白。' };
     const usableW = paper.width - margin * 2, usableH = paper.height - margin * 2 - calibrationSpace;
     const items = selectedSheets().map(sheet => {
@@ -224,18 +209,42 @@
     }));
     return { pages, margin, calibrationSpace };
   }
-  function calibrationSvg(paper) {
-    const ticks = Array.from({ length: 11 }, (_, i) => `<line x1="${i * 10}" y1="0" x2="${i * 10}" y2="${i % 5 === 0 ? 7 : 4}"/>`).join('');
-    return `<svg class="calibration" style="left:10mm;top:${paper.height - 15}mm" viewBox="0 0 100 13" aria-label="100 mm 校正尺"><g>${ticks}<line x1="0" y1="0" x2="100" y2="0"/><text x="0" y="12">0</text><text x="45" y="12">50</text><text x="88" y="12">100 mm</text></g></svg>`;
+  const RULER_WIDTH = 50, RULER_HEIGHT = 13;
+  function rulerForPage(pageIndex, paper, margin) {
+    return rulerPlacements.get(`${layoutKey()}|${pageIndex}`) || null;
   }
-  function drawCalibration(x, y, pxPerMm) {
-    const rulerX = x + 10 * pxPerMm, rulerY = y - 15 * pxPerMm, width = 100 * pxPerMm;
+  function scaleRulerSvg(ruler) {
+    const ticks = Array.from({ length: 51 }, (_, i) => `<line x1="${i}" y1="0" x2="${i}" y2="${i % 10 === 0 ? 7 : i % 5 === 0 ? 5 : 3}"/>`).join('');
+    const labels = Array.from({ length: 6 }, (_, i) => `<text x="${i * 10 - (i ? 1.5 : 0)}" y="12">${i}</text>`).join('');
+    return `<svg class="scale-ruler" style="left:${ruler.left}mm;top:${ruler.top}mm" viewBox="0 0 50 13" aria-label="5 cm 比例尺"><g>${ticks}<line x1="0" y1="0" x2="50" y2="0"/>${labels}</g></svg>`;
+  }
+  function drawScaleRuler(x, y, pxPerMm) {
     ctx.save(); ctx.strokeStyle = '#172c3d'; ctx.fillStyle = '#172c3d'; ctx.lineWidth = 1; ctx.font = '10px sans-serif';
-    ctx.beginPath(); ctx.moveTo(rulerX, rulerY); ctx.lineTo(rulerX + width, rulerY); for (let i = 0; i <= 10; i++) { const tick = i % 5 === 0 ? 7 : 4; ctx.moveTo(rulerX + i * width / 10, rulerY); ctx.lineTo(rulerX + i * width / 10, rulerY + tick); } ctx.stroke();
-    ctx.fillText('0', rulerX, rulerY + 13); ctx.fillText('50', rulerX + width / 2 - 6, rulerY + 13); ctx.fillText('100 mm 校正尺', rulerX + width - 76, rulerY + 13); ctx.restore();
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + RULER_WIDTH * pxPerMm, y);
+    for (let i = 0; i <= 50; i++) { const tick = i % 10 === 0 ? 7 : i % 5 === 0 ? 5 : 3; ctx.moveTo(x + i * pxPerMm, y); ctx.lineTo(x + i * pxPerMm, y + tick); }
+    ctx.stroke(); for (let i = 0; i <= 5; i++) ctx.fillText(String(i), x + i * 10 * pxPerMm - (i ? 3 : 0), y + 13); ctx.restore();
+  }
+  function watermarkSvg(paper) {
+    const tileW = 105, tileH = 70, marks = [];
+    const name = esc(watermarkText);
+    for (let y = 0; y < paper.height; y += tileH) for (let x = 0; x < paper.width; x += tileW) marks.push(`<g transform="translate(${x} ${y})"><path d="M0 0L${tileW} ${tileH}M${tileW} 0L0 ${tileH}"/><text x="${tileW / 2}" y="${tileH / 2}">${name}</text></g>`);
+    return `<svg class="watermark" style="width:${paper.width}mm;height:${paper.height}mm;left:0;top:0" viewBox="0 0 ${paper.width} ${paper.height}" aria-label="${name} 浮水印">${marks.join('')}</svg>`;
+  }
+  function drawWatermark(x, y, paper, pxPerMm) {
+    const tileW = 105, tileH = 70;
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, paper.width * pxPerMm, paper.height * pxPerMm); ctx.clip();
+    ctx.strokeStyle = 'rgba(82, 92, 102, .26)'; ctx.fillStyle = 'rgba(82, 92, 102, .38)'; ctx.lineWidth = 0.7; ctx.setLineDash([4, 3]);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `${Math.max(9, 7 * pxPerMm)}px "Microsoft JhengHei", sans-serif`;
+    for (let top = 0; top < paper.height; top += tileH) for (let left = 0; left < paper.width; left += tileW) {
+      const x0 = x + left * pxPerMm, y0 = y + top * pxPerMm;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + tileW * pxPerMm, y0 + tileH * pxPerMm); ctx.moveTo(x0 + tileW * pxPerMm, y0); ctx.lineTo(x0, y0 + tileH * pxPerMm); ctx.stroke();
+      ctx.fillText(watermarkText, x0 + tileW * pxPerMm / 2, y0 + tileH * pxPerMm / 2);
+    }
+    ctx.restore();
   }
   function setLayoutPreview(on) {
     layoutPreview = on;
+    if (!on) setRulerPlacementMode(false);
     el('layoutPreviewBtn').classList.toggle('active', on);
     el('layoutPreviewBtn').textContent = on ? '返回一般圖面檢視' : '在畫面預覽 A4／A3 排版';
     canvas.classList.toggle('measure', false); render();
@@ -250,7 +259,7 @@
     ctx.save();
     pages.forEach((page, index) => {
       const col = index % columns, row = Math.floor(index / columns), x = startX + col * (paper.width + gap) * pxPerMm, y = startY + row * (paper.height + gap) * pxPerMm;
-      ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3; ctx.fillRect(x, y, paper.width * pxPerMm, paper.height * pxPerMm); ctx.shadowColor = 'transparent';
+      ctx.fillStyle = '#fff'; ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3; ctx.fillRect(x, y, paper.width * pxPerMm, paper.height * pxPerMm); ctx.shadowColor = 'transparent'; if (watermarkEnabled) drawWatermark(x, y, paper, pxPerMm);
       ctx.strokeStyle = '#6f7f8e'; ctx.lineWidth = 1; ctx.strokeRect(x, y, paper.width * pxPerMm, paper.height * pxPerMm);
       ctx.save(); ctx.beginPath(); ctx.rect(x, y, paper.width * pxPerMm, paper.height * pxPerMm); ctx.clip();
       ctx.strokeStyle = '#102b43'; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
@@ -258,7 +267,7 @@
         const b = placement.sheet.bounds, drawX = x + placement.left * pxPerMm, drawY = y + placement.top * pxPerMm;
         for (const s of placement.sheet.segments) { ctx.setLineDash(s.lineType === 2 ? [5, 4] : []); ctx.beginPath(); ctx.moveTo(drawX + (s.a[0] - b.minX) / UNITS_PER_MM * placement.scale * pxPerMm, drawY + (b.maxY - s.a[1]) / UNITS_PER_MM * placement.scale * pxPerMm); ctx.lineTo(drawX + (s.b[0] - b.minX) / UNITS_PER_MM * placement.scale * pxPerMm, drawY + (b.maxY - s.b[1]) / UNITS_PER_MM * placement.scale * pxPerMm); ctx.stroke(); }
       }
-      ctx.restore(); ctx.setLineDash([]); drawCalibration(x, y + paper.height * pxPerMm, pxPerMm); ctx.fillStyle = '#435363'; ctx.font = '12px "Microsoft JhengHei", sans-serif'; ctx.fillText(`第 ${index + 1} 頁 ・ ${page.placements.map(p => `圖紙${p.sheet.id}`).join('、')}`, x + 8, y + paper.height * pxPerMm - 25);
+      ctx.restore(); ctx.setLineDash([]); const ruler = rulerForPage(index, paper, layout.margin); if (ruler) drawScaleRuler(x + ruler.left * pxPerMm, y + ruler.top * pxPerMm, pxPerMm);
     });
     ctx.restore();
   }
@@ -273,6 +282,50 @@
       }
     }
     return null;
+  }
+  function findRuler(x, y) {
+    const map = layoutHitMap; if (!map) return null;
+    for (let pageIndex = 0; pageIndex < map.pages.length; pageIndex++) {
+      const col = pageIndex % map.columns, row = Math.floor(pageIndex / map.columns);
+      const pageX = map.startX + col * (map.paper.width + map.gap) * map.pxPerMm, pageY = map.startY + row * (map.paper.height + map.gap) * map.pxPerMm;
+      const ruler = rulerForPage(pageIndex, map.paper, map.margin); if (!ruler) continue;
+      const x1 = pageX + ruler.left * map.pxPerMm, y1 = pageY + ruler.top * map.pxPerMm;
+      if (x >= x1 && x <= x1 + RULER_WIDTH * map.pxPerMm && y >= y1 && y <= y1 + RULER_HEIGHT * map.pxPerMm) return { ruler, pageIndex, pageX, pageY };
+    }
+    return null;
+  }
+  function setRulerPlacementMode(on) {
+    rulerPlacementMode = on;
+    el('addRulerBtn').classList.toggle('active', on);
+    el('addRulerBtn').textContent = on ? '請依序點每張紙放置（再按一次結束）' : '放置 5 cm 比例尺';
+    canvas.style.cursor = on ? 'crosshair' : 'grab';
+  }
+  function placeRuler(x, y) {
+    const map = layoutHitMap; if (!map) return false;
+    for (let pageIndex = 0; pageIndex < map.pages.length; pageIndex++) {
+      const col = pageIndex % map.columns, row = Math.floor(pageIndex / map.columns);
+      const pageX = map.startX + col * (map.paper.width + map.gap) * map.pxPerMm, pageY = map.startY + row * (map.paper.height + map.gap) * map.pxPerMm;
+      if (x < pageX || x > pageX + map.paper.width * map.pxPerMm || y < pageY || y > pageY + map.paper.height * map.pxPerMm) continue;
+      const left = Math.max(map.margin, Math.min(map.paper.width - map.margin - RULER_WIDTH, (x - pageX) / map.pxPerMm));
+      const top = Math.max(map.margin, Math.min(map.paper.height - map.margin - RULER_HEIGHT, (y - pageY) / map.pxPerMm));
+      rulerPlacements.set(`${layoutKey()}|${pageIndex}`, { pageIndex, left, top });
+      render(); return true;
+    }
+    return false;
+  }
+  function beginRulerDrag(x, y) {
+    const hit = findRuler(x, y); if (!hit) return false;
+    const map = layoutHitMap;
+    rulerDrag = { ...hit, offsetX: (x - hit.pageX) / map.pxPerMm - hit.ruler.left, offsetY: (y - hit.pageY) / map.pxPerMm - hit.ruler.top };
+    return true;
+  }
+  function updateRulerDrag(x, y) {
+    if (!rulerDrag || !layoutHitMap) return;
+    const map = layoutHitMap, margin = map.margin;
+    const left = Math.max(margin, Math.min(map.paper.width - margin - RULER_WIDTH, (x - rulerDrag.pageX) / map.pxPerMm - rulerDrag.offsetX));
+    const top = Math.max(margin, Math.min(map.paper.height - margin - RULER_HEIGHT, (y - rulerDrag.pageY) / map.pxPerMm - rulerDrag.offsetY));
+    rulerPlacements.set(`${layoutKey()}|${rulerDrag.pageIndex}`, { pageIndex: rulerDrag.pageIndex, left, top });
+    render();
   }
   function beginLayoutDrag(x, y) {
     const hit = findLayoutPlacement(x, y); if (!hit) return false;
@@ -307,32 +360,37 @@
     const paper = printPages[0].paper;
     const pages = printPages.map((page, index) => {
       const drawings = page.placements.map(placement => { const { sheet, drawW, drawH, left, top } = placement, b = sheet.bounds; return `<svg aria-label="圖紙 ${sheet.id}" style="width:${drawW}mm;height:${drawH}mm;left:${left}mm;top:${top}mm" viewBox="${b.minX} ${b.minY} ${b.width} ${b.height}"><g transform="translate(0 ${b.minY + b.maxY}) scale(1 -1)">${svgPaths(sheet.segments)}</g></svg>`; }).join('');
-      const summary = page.placements.map(p => `圖紙 ${p.sheet.id} ${Math.round(p.scale * 10000) / 100}%`).join(' ｜ ');
-      return `<section class="page">${drawings}${calibrationSvg(paper)}<span class="caption">第 ${index + 1} 頁：${summary}</span></section>`;
+      const ruler = rulerForPage(index, paper, layout.margin);
+      return `<section class="page">${watermarkEnabled ? watermarkSvg(paper) : ''}${drawings}${ruler ? scaleRulerSvg(ruler) : ''}</section>`;
     }).join('');
-    const title = esc(el('fileName').textContent), html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}－排版列印</title><style>@page{size:${paper.width}mm ${paper.height}mm;margin:0}html,body{margin:0;padding:0}.page{position:relative;width:${paper.width}mm;height:${paper.height}mm;break-after:page;overflow:hidden}.page:last-child{break-after:auto}svg{position:absolute;display:block;overflow:visible}path{fill:none;stroke:#000;stroke-width:1.2;stroke-linecap:round;vector-effect:non-scaling-stroke}.calibration{position:absolute;width:100mm;height:13mm;overflow:visible}.calibration line{stroke:#000;stroke-width:.45}.calibration text{font:3.4px sans-serif;fill:#000}.caption{position:absolute;left:5mm;bottom:3mm;font:8pt sans-serif;color:#555}.toolbar{position:sticky;top:0;padding:12px;background:#172c3d;color:#fff;font:14px sans-serif;text-align:center;z-index:2}.toolbar button{margin-left:12px;padding:7px 12px;font:inherit;cursor:pointer}@media print{.toolbar{display:none}}@media screen{body{background:#ddd}.page{background:#fff;margin:8mm auto;box-shadow:0 1mm 4mm #999}}</style></head><body><div class="toolbar">此處為實際紙張範圍預覽。列印後請先量校正尺，必須正好 100 mm；確認無誤後才裁切紙樣。<button onclick="window.print()">開啟系統列印／選擇印表機</button></div>${pages}</body></html>`;
+    const title = esc(el('fileName').textContent), html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}－排版列印</title><style>@page{size:${paper.width}mm ${paper.height}mm;margin:0}html,body{margin:0;padding:0}.page{position:relative;width:${paper.width}mm;height:${paper.height}mm;break-after:page;overflow:hidden}.page:last-child{break-after:auto}svg{position:absolute;display:block;overflow:visible}path{fill:none;stroke:#000;stroke-width:1.2;stroke-linecap:round;vector-effect:non-scaling-stroke}.watermark{position:absolute;display:block;overflow:hidden;pointer-events:none}.watermark path{fill:none;stroke:#71808b;stroke-width:.45;stroke-dasharray:2 1.5}.watermark text{fill:#71808b;opacity:.55;font:6px "Microsoft JhengHei",sans-serif;text-anchor:middle}.watermark text+text{font:3px sans-serif;letter-spacing:.6px}.scale-ruler{position:absolute;width:50mm;height:13mm;overflow:visible}.scale-ruler line{stroke:#000;stroke-width:.45}.scale-ruler text{font:3.4px sans-serif;fill:#000}.toolbar{position:sticky;top:0;padding:12px;background:#172c3d;color:#fff;font:14px sans-serif;text-align:center;z-index:2}.toolbar button{margin-left:12px;padding:7px 12px;font:inherit;cursor:pointer}@media print{.toolbar{display:none}}@media screen{body{background:#ddd}.page{background:#fff;margin:8mm auto;box-shadow:0 1mm 4mm #999}}</style></head><body><div class="toolbar">此處為實際紙張範圍預覽。確認比例尺與紙樣位置後，再開啟系統列印。<button onclick="window.print()">開啟系統列印／選擇印表機</button></div>${pages}</body></html>`;
     const win = window.open('', '_blank'); if (!win) return alert('瀏覽器封鎖了列印視窗，請允許彈出式視窗後再試一次。');
     win.document.write(html); win.document.close();
   }
   el('fileInput').addEventListener('change', async event => {
     const file = event.target.files[0]; if (!file) return;
     try {
-      drawing = parseHPGL(await file.text()); sheets = splitIntoSheets(drawing.segments); manualPlacements.clear(); renderSheetList(); setLayoutPreview(false); el('fileName').textContent = file.name; el('empty').style.display = 'none';
+      drawing = parseHPGL(await file.text()); sheets = splitIntoSheets(drawing.segments); manualPlacements.clear(); rulerPlacements.clear(); rulerPlacementMode = false; renderSheetList(); setLayoutPreview(false); el('fileName').textContent = file.name; el('empty').style.display = 'none';
       const b = drawing.bounds; el('width').textContent = `${(b.width / UNITS_PER_MM).toFixed(2)} mm`; el('height').textContent = `${(b.height / UNITS_PER_MM).toFixed(2)} mm`; el('segments').textContent = drawing.segments.length.toLocaleString();
-      setMeasure(false); fit();
+      fit();
     } catch (error) { drawing = null; alert(`無法讀取這個檔案：${error.message}`); }
     event.target.value = '';
   });
-  el('fitBtn').addEventListener('click', () => { setLayoutPreview(false); fit(); }); el('measureBtn').addEventListener('click', () => { setLayoutPreview(false); setMeasure(!measuring); }); el('clearMeasureBtn').addEventListener('click', () => { measurePoints = []; showMeasurement(); render(); }); el('printBtn').addEventListener('click', printDrawing); el('layoutPreviewBtn').addEventListener('click', () => setLayoutPreview(!layoutPreview)); el('resetLayoutBtn').addEventListener('click', () => { manualPlacements.clear(); if (layoutPreview) render(); }); el('layoutPrintBtn').addEventListener('click', printLayout);
+  el('fitBtn').addEventListener('click', () => { setLayoutPreview(false); fit(); }); el('printBtn').addEventListener('click', printDrawing); el('layoutPreviewBtn').addEventListener('click', () => setLayoutPreview(!layoutPreview)); el('resetLayoutBtn').addEventListener('click', () => { manualPlacements.clear(); rulerPlacements.clear(); setRulerPlacementMode(false); if (layoutPreview) render(); }); el('layoutPrintBtn').addEventListener('click', printLayout);
   ['paperSize', 'orientation', 'pageMargin'].forEach(id => el(id).addEventListener(id === 'pageMargin' ? 'input' : 'change', () => { if (layoutPreview) render(); }));
   el('sheetList').addEventListener('change', () => { if (layoutPreview) render(); });
-  canvas.addEventListener('pointerdown', event => { const p = { x: event.offsetX, y: event.offsetY }; if (layoutPreview) { if (beginLayoutDrag(p.x, p.y)) { canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing'; } return; } if (measuring && drawing) { if (measurePoints.length >= 2) measurePoints = []; measurePoints.push(toModel(p.x, p.y)); showMeasurement(); render(); return; } drag = p; canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing'; });
-  canvas.addEventListener('pointermove', event => { const p = { x: event.offsetX, y: event.offsetY }; if (layoutPreview) { if (layoutDrag) updateLayoutDrag(p.x, p.y); return; } if (drawing) { const m = toModel(p.x, p.y); el('cursor').textContent = `${(m[0] / UNITS_PER_MM).toFixed(1)}, ${(m[1] / UNITS_PER_MM).toFixed(1)} mm`; } if (drag) { view.x += p.x - drag.x; view.y += p.y - drag.y; drag = p; render(); } });
-  canvas.addEventListener('pointerup', () => { if (layoutDrag) { layoutDrag = null; canvas.style.cursor = 'grab'; return; } drag = null; canvas.style.cursor = measuring ? 'crosshair' : 'grab'; });
+  el('addRulerBtn').addEventListener('click', () => { if (!layoutPreview) setLayoutPreview(true); setRulerPlacementMode(!rulerPlacementMode); });
+  el('removeRulerBtn').addEventListener('click', () => { rulerPlacements.clear(); setRulerPlacementMode(false); if (layoutPreview) render(); });
+  el('watermarkText').addEventListener('input', event => { watermarkText = event.target.value.trim(); if (watermarkEnabled && layoutPreview) render(); });
+  el('watermarkEnabled').addEventListener('change', event => { if (event.target.checked && !watermarkText) { event.target.checked = false; return alert('請先輸入浮水印品牌名稱。'); } watermarkEnabled = event.target.checked; if (layoutPreview) render(); });
+  canvas.addEventListener('pointerdown', event => { const p = { x: event.offsetX, y: event.offsetY }; if (layoutPreview) { if (rulerPlacementMode) { placeRuler(p.x, p.y); return; } if (beginRulerDrag(p.x, p.y) || beginLayoutDrag(p.x, p.y)) { canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing'; } return; } drag = p; canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing'; });
+  canvas.addEventListener('pointermove', event => { const p = { x: event.offsetX, y: event.offsetY }; if (layoutPreview) { if (rulerDrag) updateRulerDrag(p.x, p.y); else if (layoutDrag) updateLayoutDrag(p.x, p.y); return; } if (drag) { view.x += p.x - drag.x; view.y += p.y - drag.y; drag = p; render(); } });
+  canvas.addEventListener('pointerup', () => { if (rulerDrag || layoutDrag) { rulerDrag = null; layoutDrag = null; canvas.style.cursor = 'grab'; return; } drag = null; canvas.style.cursor = 'grab'; });
   canvas.addEventListener('wheel', event => { if (!drawing) return; event.preventDefault(); const old = toModel(event.offsetX, event.offsetY), ratio = event.deltaY < 0 ? 1.14 : 1 / 1.14; view.scale = Math.max(.002, Math.min(20, view.scale * ratio)); view.x = event.offsetX - old[0] * view.scale; view.y = event.offsetY - (drawing.bounds.maxY - old[1]) * view.scale; render(); }, { passive: false });
   new ResizeObserver(resizeCanvas).observe(wrap); resizeCanvas();
 })();
 </script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js');</script>
-</body>
-</html>
+
+
+</body><div id="codex-browser-sidebar-comments-root" style="position: fixed; inset: 0px; pointer-events: none; z-index: 2147483647;"></div></html>
