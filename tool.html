@@ -11,9 +11,10 @@
     body { margin: 0; height: 100vh; overflow: hidden; background: #f2f5f8; color: #18212b; }
     header { height: 58px; display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #dce3ea; }
     h1 { font-size: 17px; margin: 0 12px 0 0; white-space: nowrap; }
-    button, .file-label, select, input { font: inherit; font-size: 14px; }
-    button, .file-label { border: 1px solid #b8c5d2; border-radius: 7px; background: #fff; padding: 8px 11px; cursor: pointer; white-space: nowrap; }
-    button:hover, .file-label:hover { background: #edf5fd; border-color: #4e8fc9; }
+    button, .file-label, .home-link, select, input { font: inherit; font-size: 14px; }
+    button, .file-label, .home-link { border: 1px solid #b8c5d2; border-radius: 7px; background: #fff; padding: 8px 11px; cursor: pointer; white-space: nowrap; }
+    .home-link { color: #31485c; text-decoration: none; }
+    button:hover, .file-label:hover, .home-link:hover { background: #edf5fd; border-color: #4e8fc9; }
     button.active { background: #1769aa; color: #fff; border-color: #1769aa; }
     .file-label input { display: none; }
     .spacer { flex: 1; }
@@ -45,6 +46,7 @@
 <body>
   <header>
     <h1>PLT 原比例檢視與量測</h1>
+    <a class="home-link" href="index.html">← 回首頁</a>
     <label class="file-label">開啟 PLT<input id="fileInput" type="file" accept=".plt,.hpgl,.hgl,text/plain"></label>
     <button id="fitBtn" title="將圖面縮放至可視範圍">符合視窗</button>
     <span class="spacer"></span><span id="fileName">尚未載入檔案</span>
