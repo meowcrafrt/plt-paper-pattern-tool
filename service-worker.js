@@ -1,4 +1,4 @@
-const CACHE_NAME = 'plt-pattern-tool-v2';
+const CACHE_NAME = 'plt-pattern-tool-v3';
 const APP_FILES = ['./', './index.html', './tool.html', './manifest.webmanifest'];
 
 self.addEventListener('install', event => {
