@@ -53,7 +53,7 @@
   </header>
   <main>
     <section id="canvasWrap">
-      <canvas id="canvas" width="671" height="800" style="width: 536.4px; height: 639.6px;"></canvas>
+      <canvas id="canvas" width="1213" height="828" style="width: 970px; height: 662px;"></canvas>
       <div id="empty"><div>選擇一個 PLT 檔案開始<br><small>支援 HPGL／HPGL/2 的 PU、PD 繪圖座標</small></div></div>
     </section>
     <aside>
@@ -65,6 +65,10 @@
         <button id="addRulerBtn" class="wide-btn">放置 5 cm 比例尺</button>
         <button id="removeRulerBtn" class="wide-btn">移除全部比例尺</button>
         <p class="notice">按「放置 5 cm 比例尺」後，可依序在每張紙點一下放置。每張 A4／A3 都能各有一把尺；再按一次按鈕即可結束放置模式。插入後可再直接拖曳比例尺。</p>
+        <div class="print-row"><input id="qrUrl" class="brand-input" type="url" inputmode="url" placeholder="輸入網址，產生 QR Code" aria-label="QR Code 網址"></div>
+        <button id="addQrBtn" class="wide-btn">產生並放置 QR Code</button>
+        <button id="removeQrBtn" class="wide-btn">移除全部 QR Code</button>
+        <p class="notice">輸入網址後按「產生並放置 QR Code」，再到紙張預覽中點選想放的位置。插入後可直接拖曳，列印時會一併保留。</p>
         <div class="print-row"><input id="watermarkText" class="brand-input" type="text" value="蓬蓬貓手作" maxlength="24" aria-label="浮水印品牌名稱" placeholder="輸入你的品牌名稱"></div>
         <label class="toggle-row"><input id="watermarkEnabled" type="checkbox">啟用滿版品牌浮水印</label>
         <p class="notice">輸入品牌名稱後開啟。每張列印紙會鋪上淡色斜線與品牌文字；紙樣線條和 100% 尺寸不受影響，也不會上傳名稱。</p>
@@ -86,7 +90,7 @@
   const ctx = canvas.getContext('2d');
   const wrap = document.querySelector('#canvasWrap');
   const el = id => document.getElementById(id);
-  let drawing = null, sheets = [], layoutPreview = false, manualPlacements = new Map(), rotatedSheets = new Set(), selectedSheetId = null, rulerPlacements = new Map(), rulerPlacementMode = false, watermarkEnabled = false, watermarkText = '蓬蓬貓手作', layoutHitMap = null, layoutDrag = null, rulerDrag = null, view = { scale: 1, x: 0, y: 0 }, drag = null;
+  let drawing = null, sheets = [], layoutPreview = false, manualPlacements = new Map(), rotatedSheets = new Set(), selectedSheetId = null, rulerPlacements = new Map(), rulerPlacementMode = false, qrPlacements = new Map(), qrPlacementMode = false, qrUrl = '', qrImage = null, watermarkEnabled = false, watermarkText = '蓬蓬貓手作', layoutHitMap = null, layoutDrag = null, rulerDrag = null, qrDrag = null, view = { scale: 1, x: 0, y: 0 }, drag = null;
 
   function parseNumberPairs(params) {
     const values = (params.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
@@ -233,8 +237,28 @@
     return { pages: arrangedPages.filter(page => page.placements.length), margin, calibrationSpace };
   }
   const RULER_WIDTH = 50, RULER_HEIGHT = 13;
+  const QR_SIZE = 30;
   function rulerForPage(pageIndex, paper, margin) {
     return rulerPlacements.get(`${layoutKey()}|${pageIndex}`) || null;
+  }
+  function qrForPage(pageIndex) {
+    return qrPlacements.get(`${layoutKey()}|${pageIndex}`) || null;
+  }
+  function qrImageUrl(value) {
+    return `https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=0&format=png&data=${encodeURIComponent(value)}`;
+  }
+  function loadQrImage(value) {
+    qrImage = new Image();
+    qrImage.onload = () => { if (layoutPreview) render(); };
+    qrImage.onerror = () => { qrImage = null; alert('QR Code 暫時無法產生，請確認網路或稍後再試。'); };
+    qrImage.src = qrImageUrl(value);
+  }
+  function qrCodeHtml(qr) {
+    return `<img class="qr-code" style="left:${qr.left}mm;top:${qr.top}mm;width:${QR_SIZE}mm;height:${QR_SIZE}mm" src="${esc(qrImageUrl(qr.url))}" alt="QR Code">`;
+  }
+  function drawQrCode(x, y, pxPerMm) {
+    if (!qrImage || !qrImage.complete || !qrImage.naturalWidth) return;
+    ctx.drawImage(qrImage, x, y, QR_SIZE * pxPerMm, QR_SIZE * pxPerMm);
   }
   function scaleRulerSvg(ruler) {
     const ticks = Array.from({ length: 51 }, (_, i) => `<line x1="${i}" y1="0" x2="${i}" y2="${i % 10 === 0 ? 7 : i % 5 === 0 ? 5 : 3}"/>`).join('');
@@ -267,7 +291,7 @@
   }
   function setLayoutPreview(on) {
     layoutPreview = on;
-    if (!on) setRulerPlacementMode(false);
+    if (!on) { setRulerPlacementMode(false); setQrPlacementMode(false); }
     el('layoutPreviewBtn').classList.toggle('active', on);
     el('layoutPreviewBtn').textContent = on ? '返回一般圖面檢視' : '在畫面預覽 A4／A3 排版';
     canvas.classList.toggle('measure', false); render();
@@ -292,6 +316,7 @@
         for (const s of placement.sheet.segments) { const a = pointInPlacement(s.a, b, placement.rotated), b2 = pointInPlacement(s.b, b, placement.rotated); ctx.setLineDash(s.lineType === 2 ? [5, 4] : []); ctx.beginPath(); ctx.moveTo(drawX + a[0] * placement.scale * pxPerMm, drawY + a[1] * placement.scale * pxPerMm); ctx.lineTo(drawX + b2[0] * placement.scale * pxPerMm, drawY + b2[1] * placement.scale * pxPerMm); ctx.stroke(); }
       }
       ctx.restore(); ctx.setLineDash([]); const ruler = rulerForPage(index, paper, layout.margin); if (ruler) drawScaleRuler(x + ruler.left * pxPerMm, y + ruler.top * pxPerMm, pxPerMm);
+      const qr = qrForPage(index); if (qr) drawQrCode(x + qr.left * pxPerMm, y + qr.top * pxPerMm, pxPerMm);
     });
     ctx.restore();
   }
@@ -315,6 +340,17 @@
       const ruler = rulerForPage(pageIndex, map.paper, map.margin); if (!ruler) continue;
       const x1 = pageX + ruler.left * map.pxPerMm, y1 = pageY + ruler.top * map.pxPerMm;
       if (x >= x1 && x <= x1 + RULER_WIDTH * map.pxPerMm && y >= y1 && y <= y1 + RULER_HEIGHT * map.pxPerMm) return { ruler, pageIndex, pageX, pageY };
+    }
+    return null;
+  }
+  function findQrCode(x, y) {
+    const map = layoutHitMap; if (!map) return null;
+    for (let pageIndex = 0; pageIndex < map.pages.length; pageIndex++) {
+      const col = pageIndex % map.columns, row = Math.floor(pageIndex / map.columns);
+      const pageX = map.startX + col * (map.paper.width + map.gap) * map.pxPerMm, pageY = map.startY + row * (map.paper.height + map.gap) * map.pxPerMm;
+      const qr = qrForPage(pageIndex); if (!qr) continue;
+      const x1 = pageX + qr.left * map.pxPerMm, y1 = pageY + qr.top * map.pxPerMm;
+      if (x >= x1 && x <= x1 + QR_SIZE * map.pxPerMm && y >= y1 && y <= y1 + QR_SIZE * map.pxPerMm) return { qr, pageIndex, pageX, pageY };
     }
     return null;
   }
@@ -351,6 +387,37 @@
     rulerPlacements.set(`${layoutKey()}|${rulerDrag.pageIndex}`, { pageIndex: rulerDrag.pageIndex, left, top });
     render();
   }
+  function setQrPlacementMode(on) {
+    qrPlacementMode = on;
+    el('addQrBtn').classList.toggle('active', on);
+    el('addQrBtn').textContent = on ? '請在紙張上點選放置位置（再按一次結束）' : '產生並放置 QR Code';
+    canvas.style.cursor = on ? 'crosshair' : 'grab';
+  }
+  function placeQrCode(x, y) {
+    const map = layoutHitMap; if (!map || !qrUrl) return false;
+    for (let pageIndex = 0; pageIndex < map.pages.length; pageIndex++) {
+      const col = pageIndex % map.columns, row = Math.floor(pageIndex / map.columns);
+      const pageX = map.startX + col * (map.paper.width + map.gap) * map.pxPerMm, pageY = map.startY + row * (map.paper.height + map.gap) * map.pxPerMm;
+      if (x < pageX || x > pageX + map.paper.width * map.pxPerMm || y < pageY || y > pageY + map.paper.height * map.pxPerMm) continue;
+      const left = Math.max(map.margin, Math.min(map.paper.width - map.margin - QR_SIZE, (x - pageX) / map.pxPerMm));
+      const top = Math.max(map.margin, Math.min(map.paper.height - map.margin - QR_SIZE, (y - pageY) / map.pxPerMm));
+      qrPlacements.set(`${layoutKey()}|${pageIndex}`, { pageIndex, left, top, url: qrUrl }); render(); return true;
+    }
+    return false;
+  }
+  function beginQrDrag(x, y) {
+    const hit = findQrCode(x, y); if (!hit) return false;
+    const map = layoutHitMap;
+    qrDrag = { ...hit, offsetX: (x - hit.pageX) / map.pxPerMm - hit.qr.left, offsetY: (y - hit.pageY) / map.pxPerMm - hit.qr.top };
+    return true;
+  }
+  function updateQrDrag(x, y) {
+    if (!qrDrag || !layoutHitMap) return;
+    const map = layoutHitMap, margin = map.margin;
+    const left = Math.max(margin, Math.min(map.paper.width - margin - QR_SIZE, (x - qrDrag.pageX) / map.pxPerMm - qrDrag.offsetX));
+    const top = Math.max(margin, Math.min(map.paper.height - margin - QR_SIZE, (y - qrDrag.pageY) / map.pxPerMm - qrDrag.offsetY));
+    qrPlacements.set(`${layoutKey()}|${qrDrag.pageIndex}`, { ...qrDrag.qr, pageIndex: qrDrag.pageIndex, left, top }); render();
+  }
   function beginLayoutDrag(x, y) {
     const hit = findLayoutPlacement(x, y); if (!hit) return false;
     const map = layoutHitMap;
@@ -386,30 +453,33 @@
     const pages = printPages.map((page, index) => {
       const drawings = page.placements.map(placementSvg).join('');
       const ruler = rulerForPage(index, paper, layout.margin);
-      return `<section class="page">${watermarkEnabled ? watermarkSvg(paper) : ''}${drawings}${ruler ? scaleRulerSvg(ruler) : ''}</section>`;
+      const qr = qrForPage(index);
+      return `<section class="page">${watermarkEnabled ? watermarkSvg(paper) : ''}${drawings}${ruler ? scaleRulerSvg(ruler) : ''}${qr ? qrCodeHtml(qr) : ''}</section>`;
     }).join('');
-    const title = esc(el('fileName').textContent), html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}－排版列印</title><style>@page{size:${paper.width}mm ${paper.height}mm;margin:0}html,body{margin:0;padding:0}.page{position:relative;width:${paper.width}mm;height:${paper.height}mm;break-after:page;overflow:hidden}.page:last-child{break-after:auto}svg{position:absolute;display:block;overflow:visible}path{fill:none;stroke:#000;stroke-width:1.2;stroke-linecap:round;vector-effect:non-scaling-stroke}.watermark{position:absolute;display:block;overflow:hidden;pointer-events:none}.watermark path{fill:none;stroke:#71808b;stroke-width:.45;stroke-dasharray:2 1.5}.watermark text{fill:#71808b;opacity:.55;font:6px "Microsoft JhengHei",sans-serif;text-anchor:middle}.watermark text+text{font:3px sans-serif;letter-spacing:.6px}.scale-ruler{position:absolute;width:50mm;height:13mm;overflow:visible}.scale-ruler line{stroke:#000;stroke-width:.45}.scale-ruler text{font:3.4px sans-serif;fill:#000}.toolbar{position:sticky;top:0;padding:12px;background:#172c3d;color:#fff;font:14px sans-serif;text-align:center;z-index:2}.toolbar button{margin-left:12px;padding:7px 12px;font:inherit;cursor:pointer}@media print{.toolbar{display:none}}@media screen{body{background:#ddd}.page{background:#fff;margin:8mm auto;box-shadow:0 1mm 4mm #999}}</style></head><body><div class="toolbar">此處為實際紙張範圍預覽。確認比例尺與紙樣位置後，再開啟系統列印。<button onclick="window.print()">開啟系統列印／選擇印表機</button></div>${pages}</body></html>`;
+    const title = esc(el('fileName').textContent), html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}－排版列印</title><style>@page{size:${paper.width}mm ${paper.height}mm;margin:0}html,body{margin:0;padding:0}.page{position:relative;width:${paper.width}mm;height:${paper.height}mm;break-after:page;overflow:hidden}.page:last-child{break-after:auto}svg,.qr-code{position:absolute;display:block;overflow:visible}path{fill:none;stroke:#000;stroke-width:1.2;stroke-linecap:round;vector-effect:non-scaling-stroke}.watermark{position:absolute;display:block;overflow:hidden;pointer-events:none}.watermark path{fill:none;stroke:#71808b;stroke-width:.45;stroke-dasharray:2 1.5}.watermark text{fill:#71808b;opacity:.55;font:6px "Microsoft JhengHei",sans-serif;text-anchor:middle}.watermark text+text{font:3px sans-serif;letter-spacing:.6px}.scale-ruler{position:absolute;width:50mm;height:13mm;overflow:visible}.scale-ruler line{stroke:#000;stroke-width:.45}.scale-ruler text{font:3.4px sans-serif;fill:#000}.qr-code{box-sizing:border-box;background:#fff;padding:1mm}.toolbar{position:sticky;top:0;padding:12px;background:#172c3d;color:#fff;font:14px sans-serif;text-align:center;z-index:2}.toolbar button{margin-left:12px;padding:7px 12px;font:inherit;cursor:pointer}@media print{.toolbar{display:none}}@media screen{body{background:#ddd}.page{background:#fff;margin:8mm auto;box-shadow:0 1mm 4mm #999}}</style></head><body><div class="toolbar">此處為實際紙張範圍預覽。確認比例尺、QR Code 與紙樣位置後，再開啟系統列印。<button onclick="window.print()">開啟系統列印／選擇印表機</button></div>${pages}</body></html>`;
     const win = window.open('', '_blank'); if (!win) return alert('瀏覽器封鎖了列印視窗，請允許彈出式視窗後再試一次。');
     win.document.write(html); win.document.close();
   }
   el('fileInput').addEventListener('change', async event => {
     const file = event.target.files[0]; if (!file) return;
     try {
-      drawing = parseHPGL(await file.text()); sheets = splitIntoSheets(drawing.segments); manualPlacements.clear(); rotatedSheets.clear(); setSelectedSheet(null); rulerPlacements.clear(); rulerPlacementMode = false; renderSheetList(); setLayoutPreview(false); el('fileName').textContent = file.name; el('empty').style.display = 'none';
+      drawing = parseHPGL(await file.text()); sheets = splitIntoSheets(drawing.segments); manualPlacements.clear(); rotatedSheets.clear(); setSelectedSheet(null); rulerPlacements.clear(); qrPlacements.clear(); rulerPlacementMode = false; qrPlacementMode = false; renderSheetList(); setLayoutPreview(false); el('fileName').textContent = file.name; el('empty').style.display = 'none';
       fit();
     } catch (error) { drawing = null; alert(`無法讀取這個檔案：${error.message}`); }
     event.target.value = '';
   });
-  el('fitBtn').addEventListener('click', () => { setLayoutPreview(false); fit(); }); el('layoutPreviewBtn').addEventListener('click', () => setLayoutPreview(!layoutPreview)); el('rotateSheetBtn').addEventListener('click', () => { if (!selectedSheetId) return; rotatedSheets.has(selectedSheetId) ? rotatedSheets.delete(selectedSheetId) : rotatedSheets.add(selectedSheetId); manualPlacements.delete(selectedSheetId); if (layoutPreview) render(); }); el('resetLayoutBtn').addEventListener('click', () => { manualPlacements.clear(); rotatedSheets.clear(); setSelectedSheet(null); rulerPlacements.clear(); setRulerPlacementMode(false); if (layoutPreview) render(); }); el('layoutPrintBtn').addEventListener('click', printLayout);
+  el('fitBtn').addEventListener('click', () => { setLayoutPreview(false); fit(); }); el('layoutPreviewBtn').addEventListener('click', () => setLayoutPreview(!layoutPreview)); el('rotateSheetBtn').addEventListener('click', () => { if (!selectedSheetId) return; rotatedSheets.has(selectedSheetId) ? rotatedSheets.delete(selectedSheetId) : rotatedSheets.add(selectedSheetId); manualPlacements.delete(selectedSheetId); if (layoutPreview) render(); }); el('resetLayoutBtn').addEventListener('click', () => { manualPlacements.clear(); rotatedSheets.clear(); setSelectedSheet(null); rulerPlacements.clear(); qrPlacements.clear(); setRulerPlacementMode(false); setQrPlacementMode(false); if (layoutPreview) render(); }); el('layoutPrintBtn').addEventListener('click', printLayout);
   ['paperSize', 'orientation', 'pageMargin'].forEach(id => el(id).addEventListener(id === 'pageMargin' ? 'input' : 'change', () => { if (layoutPreview) render(); }));
   el('sheetList').addEventListener('change', () => { if (layoutPreview) render(); });
   el('addRulerBtn').addEventListener('click', () => { if (!layoutPreview) setLayoutPreview(true); setRulerPlacementMode(!rulerPlacementMode); });
   el('removeRulerBtn').addEventListener('click', () => { rulerPlacements.clear(); setRulerPlacementMode(false); if (layoutPreview) render(); });
+  el('addQrBtn').addEventListener('click', () => { const value = el('qrUrl').value.trim(); try { const url = new URL(value); if (!/^https?:$/.test(url.protocol)) throw new Error(); const nextUrl = url.href; if (qrUrl && qrUrl !== nextUrl) qrPlacements.clear(); qrUrl = nextUrl; } catch { return alert('請輸入完整網址，例如：https://example.com'); } if (!layoutPreview) setLayoutPreview(true); loadQrImage(qrUrl); setRulerPlacementMode(false); setQrPlacementMode(!qrPlacementMode); });
+  el('removeQrBtn').addEventListener('click', () => { qrPlacements.clear(); setQrPlacementMode(false); if (layoutPreview) render(); });
   el('watermarkText').addEventListener('input', event => { watermarkText = event.target.value.trim(); if (watermarkEnabled && layoutPreview) render(); });
   el('watermarkEnabled').addEventListener('change', event => { if (event.target.checked && !watermarkText) { event.target.checked = false; return alert('請先輸入浮水印品牌名稱。'); } watermarkEnabled = event.target.checked; if (layoutPreview) render(); });
-  canvas.addEventListener('pointerdown', event => { const p = { x: event.offsetX, y: event.offsetY }; if (layoutPreview) { if (rulerPlacementMode) { placeRuler(p.x, p.y); return; } if (beginRulerDrag(p.x, p.y) || beginLayoutDrag(p.x, p.y)) { canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing'; } return; } drag = p; canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing'; });
-  canvas.addEventListener('pointermove', event => { const p = { x: event.offsetX, y: event.offsetY }; if (layoutPreview) { if (rulerDrag) updateRulerDrag(p.x, p.y); else if (layoutDrag) updateLayoutDrag(p.x, p.y); return; } if (drag) { view.x += p.x - drag.x; view.y += p.y - drag.y; drag = p; render(); } });
-  canvas.addEventListener('pointerup', () => { if (rulerDrag || layoutDrag) { rulerDrag = null; layoutDrag = null; canvas.style.cursor = 'grab'; return; } drag = null; canvas.style.cursor = 'grab'; });
+  canvas.addEventListener('pointerdown', event => { const p = { x: event.offsetX, y: event.offsetY }; if (layoutPreview) { if (rulerPlacementMode) { placeRuler(p.x, p.y); return; } if (qrPlacementMode) { placeQrCode(p.x, p.y); return; } if (beginQrDrag(p.x, p.y) || beginRulerDrag(p.x, p.y) || beginLayoutDrag(p.x, p.y)) { canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing'; } return; } drag = p; canvas.setPointerCapture(event.pointerId); canvas.style.cursor = 'grabbing'; });
+  canvas.addEventListener('pointermove', event => { const p = { x: event.offsetX, y: event.offsetY }; if (layoutPreview) { if (qrDrag) updateQrDrag(p.x, p.y); else if (rulerDrag) updateRulerDrag(p.x, p.y); else if (layoutDrag) updateLayoutDrag(p.x, p.y); return; } if (drag) { view.x += p.x - drag.x; view.y += p.y - drag.y; drag = p; render(); } });
+  canvas.addEventListener('pointerup', () => { if (qrDrag || rulerDrag || layoutDrag) { qrDrag = null; rulerDrag = null; layoutDrag = null; canvas.style.cursor = 'grab'; return; } drag = null; canvas.style.cursor = 'grab'; });
   canvas.addEventListener('wheel', event => { if (!drawing) return; event.preventDefault(); const old = toModel(event.offsetX, event.offsetY), ratio = event.deltaY < 0 ? 1.14 : 1 / 1.14; view.scale = Math.max(.002, Math.min(20, view.scale * ratio)); view.x = event.offsetX - old[0] * view.scale; view.y = event.offsetY - (drawing.bounds.maxY - old[1]) * view.scale; render(); }, { passive: false });
   new ResizeObserver(resizeCanvas).observe(wrap); resizeCanvas();
 })();
